@@ -1,0 +1,479 @@
+#!/bin/bash
+
+#The funcation that's called by trap to remove all temp files in case of an unexpected exit
+finish() {
+
+	#Print an error message and remove all temp files
+	echo "Program exited unexpectedly! Deleting temp files..."
+	rm -f temp*
+
+	#Give unique exit code for debugging
+	exit 5
+}
+
+
+#The dims function that prints the row and column of a given matrix
+dims() {
+	#Declare needed variables
+	row=0
+	col=0
+
+	#Read each line of the matrix
+	while read matrixLine
+	do
+		#Store a row to count the length of the matrix
+		myLine=$matrixLine
+
+		#Increment row for each line in the matrix
+		row=$(($row + 1))
+	done < $1	
+
+	#Interate over the stored row
+	for i in $myLine
+	do
+		#For each value, increment col
+		col=$(($col + 1))
+	done < $1
+
+	#Print the results
+	echo "$row $col"
+}
+
+#The transpose function takes a given MxN matrix and prints a NxM matrix
+transpose() {
+	#Get the dimensions of the matrix
+	dimensions=$(dims $1)
+
+	#From the dimensions string, grab the number of columns using grep and head
+	numCol=$(echo $dimensions | grep -Eo '[0-9]+$' | head -1)
+
+	#Create temporary files to store infromation during the program
+	tempCol="tempcolfile"
+	tempRow="temprowfile"
+	tempRow2="temprowfile2"
+	tempMatrix="tempmatrixfile"
+
+	#Iterate through all of the columns in the matrix
+	for (( i=0; i<$numCol; i++ ))
+	do
+
+		#For every column in the matrix, cut out the column and store it in tempCol$$
+		location=$(( 1 + $i ))
+		cut -f $location $1 > $tempCol$$
+
+		#Translate the column in tempCol$$ to a row file. Store the results in tempRow$$
+		cat $tempCol$$ | tr '\n' '\t' > "$tempRow$$"
+
+		#Remove the extra tab character at the end of each line
+		cat "$tempRow$$" | rev | cut -c 2- | rev > "$tempRow2$$"
+
+		#Append the row to a file called tempMatrix$$ to print out later
+		cat $tempRow2$$ >> "$tempMatrix$$"
+
+		#Removal all temp files except for tempMatrix$$ to clear space for the next iteration
+		rm $tempRow$$
+		rm $tempRow2$$
+		rm $tempCol$$
+	done
+
+	#Print the results of transpose to stdout and then remove the file
+	cat $tempMatrix$$
+	rm $tempMatrix$$
+
+}
+
+#The mean function takes a MxN matrix and returns a 1xN matrix that shows the average of each column.
+mean() {
+	#Get the dimensions of the column using the dims function
+	dimensions=$(dims $1)
+
+	#Grab the number of rows and columns using grep, and store them into variables
+	numCol="$(echo $dimensions | grep -Eo '[0-9]+$')"
+	numRow="$(echo $dimensions | grep -o -E '[0-9]+' | head -1)"
+
+	#Create temp files to store data during the function
+	tempMean="tempmeanfile"
+	tempNum="tempnumfile"
+	tempCol="tempcolfile"
+	tempRow="temprowfile"
+	tempRow2="temprowfile2"
+
+	#Iterate through every column of the matrix
+	for (( i=0; i<$numCol; i++ ))
+	do
+
+		#Create and reset the running sum for each iteration
+		sum=0
+
+		#Keep track of the field location during each iteration
+		location=$(( 1 + $i ))
+
+		#For each column in the matrix, cut out the column and store in tempCol$$
+		cut -f $location $1 > "$tempCol$$"
+
+		#Read through each line of the column tempCol$$
+		while read matrixNum
+		do
+			#Grab the number represented by myLine and store in matrixNum$$
+			myLine=$matrixNum
+			echo $myLine > $tempNum$$
+
+			#Store the number in the matrixNum$$ file into a variable
+			myNum=$(<$tempNum$$)
+
+			#Add the number to the running sum
+			sum=$(( $sum + $myNum ))
+
+			#Delete the tempNum$$ file to clear the data for the next iteration
+			rm $tempNum$$
+		done < $tempCol$$
+
+		#Delete the tempCol$$ file to clear the data for the next iteration
+		rm $tempCol$$
+
+		#Calculate the average, making sure that rounding occurs away from zero
+		average=$(( ($sum + ($numRow/2)*(($sum > 0)*2-1))/$numRow ))
+
+		#Append the average to a file called tempRow$$
+		echo $average >> "$tempRow$$"
+	done
+
+
+	#Convert the tempRow$$ file from a column format into a row format, and store in tempMean$$
+	cat $tempRow$$ | tr '\n' '\t' > "$tempMean$$"
+
+	#Remove the extra tab at the end of the row file and store in a new file called tempRow2$$
+	cat "$tempMean$$" | rev | cut -c 2- | rev > "$tempRow2$$"
+
+	#Print the results to stdout
+	cat "$tempRow2$$"
+
+	#Clear all temp files
+	rm $tempRow$$
+	rm $tempRow2$$
+	rm $tempMean$$
+}
+
+#The add function takes two MxN matrices and finds their sum
+add() {
+	#Determine the dimension of one matrix using the dims function
+	dimensions=$(dims $1)
+
+	#Grab the number of columns and rows using grep, and then store the result into variables
+	numCol="$(echo $dimensions | grep -Eo '[0-9]+$')"
+	numRow="$(echo $dimensions | grep -o -E '[0-9]+' | head -1)"
+
+	#Create temp files to store data during the funtion
+	tempMatrix="tempmatrixfile"
+
+	#Read through each line in both matrices
+	while read <&3 m1_row && read <&4 m2_row
+	do
+		#Iterate through each column of both matrices
+		for (( i=1; i<$numCol+1; i++ ))
+		do
+			#Grab the current line for each matrix and pipe the result to stdin of cut.
+			#Cut will then take the current column at "i" and store the resulting number from 
+			#The matrix into a variable.
+			m1Num=$(echo "$m1_row" | cut -f $i)
+			m2Num=$(echo "$m2_row" | cut -f $i)
+
+			#Add the variables together
+			summation=$(( $m1Num + $m2Num ))
+
+			#Append the summation to the tempMatrix$$ file for storage
+			echo -n "$summation" >> "$tempMatrix$$"
+
+			#Add tabs after each summation unless it's the last number in the column
+			if [ "$i" != "$numCol" ]
+			then
+				echo -n "	" >> "$tempMatrix$$"
+			fi
+		done
+
+		#Add in a new line character before the next row iteration
+		echo "" >> $tempMatrix$$
+	done 3<$1 4<$2
+
+	#Print out the results to stdout
+	cat $tempMatrix$$
+
+	#Delete all temp files
+	rm $tempMatrix$$
+
+}
+
+#The multiply function takes an MxN and NxP matrix and creates their product in a MxP matrix
+multiply() {
+	#Determine the dimensions of the second matrix
+	m2Dimensions=$(dims $2)
+
+	#Grab the number of columns and rows using grep, and store the results in variables
+	m2NumCol="$(echo $m2Dimensions | grep -Eo '[0-9]+$')"
+	m2NumRow="$(echo $m2dimensions | grep -o -E '[0-9]+' | head -1)"
+
+	#Create temp files to store data during the function
+	tempCol="tempcolfile"
+	tempRow="temprowfile"
+	tempNum="tempnumfile"
+	tempMatrix="tempmatrixfile"
+
+	#Iterate through each row of the first matrix
+	while read m1_row
+	do
+		#Store the current line into a variable called myLine
+		myLine=$m1_row
+
+		#Iterate through each column of the second matrix
+		for (( i=1; i<$m2NumCol+1; i++ ))
+		do
+
+			#Cut out the current column of the second matrix and store the results in tempCol$$
+			cut -f $i $2 > "$tempCol$$"
+
+			#Define and reset the running tally on summation and location
+			sum=0
+			location=0
+
+			#Iterate through the rows of the current column of the second matrix
+			while read m2_col
+			do
+				#Calculate the current location
+				location=$(( $location + 1 ))
+
+				#Store the current number of the second matrix into a variable
+				myNum2=$m2_col
+
+				#Move the current line from the first matrix into a file called tempRow$$
+				#Cut out the number from the first matrix based upon the calculated location and store in tempNum$$
+				echo "$myLine" > "$tempRow$$"
+				cut -f $location $tempRow$$ > $tempNum$$
+
+				#Take the contents of tempNum$$ and store into a variable for use in arithmetic
+				myNum1=$(<$tempNum$$)
+
+				#Calculate the product of the current numbers from the first and second matrix
+				product=$(( $myNum1 * $myNum2 ))
+
+				#Add the product to the running sum for the current row from the first matrix, and column from the second matrix
+				sum=$(( $sum + $product ))
+			done < $tempCol$$
+
+			#Append the sum for a given row from the first matrix and its corresponding columns from the second matrix
+			#to a storage file called myMatrix$$
+			echo -n "$sum" >> "$tempMatrix$$"
+
+			#Add a tab character after each new entry except for the last entry in a row
+			if [ $i -ne $m2NumCol ]
+			then
+				echo -n "	" >> "$tempMatrix$$"
+			fi
+
+		done
+
+		#Add a new line character after each row, and then iterate to the next row in the first matrix
+		echo "" >> "$tempMatrix$$"
+	done < $1
+
+	#Print the results to stdout
+	cat $tempMatrix$$
+
+	#Delete all temp files
+	rm $tempNum$$
+	rm $tempRow$$
+	rm $tempMatrix$$
+	rm $tempCol$$
+}
+
+#**************************************************************************************************************************************************
+#**************************************************************************************************************************************************
+#**************************************************************************************************************************************************
+#**************************************************************************************************************************************************
+#**************************************************************************************************************************************************
+
+#Trap statement that calls the finish function to remove all temp files
+trap finish 2
+
+#If the first arguement is "dims", check the rest of the arguements
+if [ "$1" == "dims" ]
+then
+	#Check for the number of arguements and print an error if a third arguement exists
+	if [ "$3" ]
+	then
+		>&2 echo "Error: Too many arguements for the 'dims' function"
+		exit 1
+	fi
+
+
+	#If there is only one arguement, take info from stdin and call the function
+	if [ "$#" -eq 1 ]
+	then
+		cat > "tempMatrixInput$$"
+		dims tempMatrixInput$$
+
+		#Clear the extra temp file
+		rm tempMatrixInput$$
+		exit 0	
+
+	#Check if the second arguement exists or if it can be read
+	else
+		#If the file doesn't exist or cannot be read, print an error
+		if [ ! -f "$2" ] || [ ! -r "$2" ]
+		then
+			>&2 echo "Error: No such file exists"
+			exit 1
+		fi
+		
+		#All checks have passed. Call the dims function with the given matrix
+		dims $2
+		exit 0
+	fi
+
+#If the first arguement is "transpose", check the rest of the arguements
+elif [ "$1" == "transpose" ]
+then
+	#Check for the number of arguements and print an error if a third arguement exists
+	if [ "$3" ]
+	then
+		>&2 echo "Error: Too many arguements for the 'transpose' function"
+		exit 1
+	fi
+
+	#If there is only one arguement, take info from stdin and call the function
+	if [ "$#" -eq 1 ]
+	then
+		cat > "tempMatrixInput$$"
+		transpose tempMatrixInput$$
+
+		#Clear the extra temp file
+		rm tempMatrixInput$$
+		exit 0	
+
+	#Check if the second arguement exists or if it can be read
+	else
+		#If the file doesn't exist or cannot be read, print an error
+		if [ ! -f "$2" ] || [ ! -r "$2" ]
+		then
+			>&2 echo "Error: No such file exists"
+			exit 1
+		fi
+		
+		#All checks have passed. Call the transpose function with the given matrix
+		transpose $2
+		exit 0
+	fi
+
+#If the first arguement is "mean", check the rest of the arguements
+elif [ "$1" == "mean" ]
+then
+	#Check for the number of arguements and print an error if a third arguement exists
+	if [ "$3" ]
+	then
+		>&2 echo "Error: Too many arguements for the 'mean' function"
+		exit 1
+	fi
+
+	#If there is only one arguement, take info from stdin and call the function
+	if [ "$#" -eq 1 ]
+	then
+		cat > "tempMatrixInput$$"
+		mean tempMatrixInput$$
+		
+		#Clear the extra temp file
+		rm tempMatrixInput$$
+		exit 0	
+
+	#Check if the second arguement exists or if it can be read
+	else
+		#If the file doesn't exist or cannot be read, print an error
+		if [ ! -f "$2" ] || [ ! -r "$2" ]
+		then
+			>&2 echo "Error: No such file exists"
+			exit 1
+		fi
+		
+		#All checks have passed. Call the transpose function with the given matrix
+		mean $2
+		exit 0
+	fi
+
+#If the first arguement is "add", check the rest of the arguements
+elif [ "$1" == "add" ]
+then
+	#If there aren't three arguements, print an erro
+	if [ "$#" -ne 3 ]
+	then
+		>&2 echo "Error: Exactly two matrices are required for add"
+		exit 1
+	fi
+
+	#If there are three arguements, check the second and third arguement.
+	#The arguements must exist as files and be readable.
+	#If not, print an error
+	if [ ! -f "$2" ] || [ ! -f "$3" ] || [ ! -r "$2" ] || [ ! -r "$3" ]
+	then
+		>&2 echo "Error: No such file exists"
+		exit 1
+	fi
+
+	#Determine the dimensions of both matrices
+	dims_m1=$(dims $2)
+	dims_m2=$(dims $3)
+
+	#If the dimensions are not the same, then they cannot be added.
+	#Print an error if they do not match
+	if [ "$dims_m1" != "$dims_m2" ]
+	then
+		>&2 echo "Error: The dimensions of the matrices do not match"
+		exit 1
+	fi
+
+	#All checks have passed. Start the add function with the given matrices
+	add $2 $3
+	exit 0
+
+#If the first arguement is "multiply", check the rest of the arguements
+elif [ "$1" == "multiply" ]
+then
+	#If there aren't three arguements, print an erro
+	if [ "$#" -ne 3 ]
+	then
+		echo "Error: Exactly two matrices are required for multiply"
+		exit 1
+	fi
+	
+	#If there are three arguements, check the second and third arguement.
+	#The arguements must exist as files and be readable.
+	#If not, print an error
+	if [ ! -f "$2" ] || [ ! -f "$3" ] || [ ! -r "$2" ] || [ ! -r "$3" ]
+	then
+		>&2 echo "Error: No such file exists"
+		exit 1
+	fi
+
+	#Determine the dimensions of both matrices
+	dims_m1=$(dims $2)
+	dims_m2=$(dims $3)
+
+	#Grab the number of columns from the first matrix and the number of rows from the second matrix using grep.
+	col_m1="$(echo $dims_m1 | grep -Eo '[0-9]+$')"
+	row_m2="$(echo $dims_m2 | grep -o -E '[0-9]+' | head -1)"
+	
+	#First the number of columns from the first matrix don't match the number of rows from the second matrix,
+	#then they cannot be multiplied.
+	#Print an error if this is the case
+	if [ "$row_m2" != "$col_m1" ]
+	then
+		>&2 echo "Error: The number of columns in m1 do not match the number of rows in m2"
+		exit 1
+	fi
+	
+	#All checks have passed. Start the multiply function with the given matrices
+	multiply $2 $3
+	exit 0
+#If none of the above arguements are passed, then it's a bad arguement.
+#Print an error
+else
+	>&2 echo "Missing command for Matrix"
+	exit 1
+fi
