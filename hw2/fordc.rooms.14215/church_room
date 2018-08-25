@@ -1,0 +1,7 @@
+ROOM NAME: church
+CONNECTION 1: kitchen
+CONNECTION 2: lobby
+CONNECTION 3: barracks
+CONNECTION 4: sanctum
+CONNECTION 5: bathroom
+ROOM TYPE: END_ROOM
