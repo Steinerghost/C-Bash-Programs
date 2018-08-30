@@ -19,3 +19,5 @@ through stdin.
 
 If files return an error, windows machines can try $dos2unix filename
 Make sure that the matrix file has execution permission using chmod +x matrix
+
+The file "p1gradingscipt" can be run as a test suite
