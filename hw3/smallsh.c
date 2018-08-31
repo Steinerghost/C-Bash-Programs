@@ -114,7 +114,7 @@ int main(){
 	sigaction(SIGTSTP, &SIGTSTP_action, NULL);
 
 	//Initalize variables
-	char* buffer;                //User input
+	char* buffer = NULL;                //User input
 	size_t bufsize = 0;          //Size in bytes of user input
 	int num_characters = -5;     //Size in characters of user input
 	char* arg_array[512];        //Array for each arguement in a given user input
